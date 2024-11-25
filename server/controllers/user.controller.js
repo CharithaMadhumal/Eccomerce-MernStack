@@ -1,4 +1,7 @@
+import sendEmail from "../config/sendEmail.js";
 import userModel from "../models/user.model.js";
+import bcryptjs from 'bcryptjs';
+import  verifyEmailTemplate  from "../utils/verifyEmailTemplate.js";
 
 export async function registerUserController(request,reponse){
     try {
@@ -21,6 +24,36 @@ export async function registerUserController(request,reponse){
                 success : false
             })
         }
+
+        const salt = await bcryptjs.genSalt(10)
+        const hashPassword = await bcryptjs.hash(password,salt)
+
+        const playload = {
+            name,
+            email,
+            password : hashPassword
+        }
+
+        const newUser = new userModel(playload)
+        const save = await newUser.save()
+
+        const VerifyEmailUrl = `${process.env.FRONTEND_URL}/verify-email?code=${save?._id}`
+
+        const verifyEmail = await sendEmail({
+            sendTo : email,
+            subject : "Verify email from binkeyit",
+            html : verifyEmailTemplate({
+                name,
+                url : VerifyEmailUrl
+            })
+        })
+
+        return response.json({
+            message : "User register successfully",
+            error : false,
+            success : true,
+            data : save
+        })
         
     } catch (error) {
         return reponse.status(500).json({
