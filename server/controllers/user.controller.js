@@ -7,6 +7,7 @@ import generatedRefreshToken from "../utils/generatedRefreshToken.js";
 import uploadImageClodinary from "../utils/uploadImageClodinary.js";
 import generatedOtp from "../utils/generateOtp.js";
 import forgotPasswordTemplate from "../utils/forgotPasswordTemplate.js";
+import jwt from "jsonwebtoken"
 
 export async function registerUserController(request,reponse){
     try {
@@ -152,11 +153,11 @@ export async function loginController(request,response){
        const cookiesOption = {
         httpOnly : true,
         secure : true,
-        sameSite : "none"
+        sameSite : "None"
        }
 
        response.cookie('accessToken',accesstoken,cookiesOption)
-       response.cookie('refreshToke',refreshToken,cookiesOption)
+       response.cookie('refreshToken',refreshToken,cookiesOption)
 
        return response.json({
         message : "Login Successfully",
@@ -338,6 +339,168 @@ export async function forgotPasswordController(request,response){
 
 export async function verifyForgotPasswordOtp(request,response){
     try {
+        const {email,otp} =request.body
+
+        if(!email || !otp){
+            return response.status(400).json({
+                message : "Provide required field email, otp",
+                error : true,
+                success : false
+            })
+        }
+
+        const user = await userModel.findOne({email})
+
+        if(!user){
+            return response.status(400).json({
+                message : "Email not available",
+                error : true,
+                success : false
+            })
+        }
+
+        const currentTime = new Date().toISOString()
+
+        if(user.forgot_password_expiry < currentTime){
+            return response.status(400).json({
+                message : "Otp is expired",
+                error : true,
+                success : false
+            })
+        }
+
+        if(otp!== user.forgot_password_otp){
+            return response.status(400).json({
+                message : "Invalid otp",
+                error : true,
+                success : false
+            })
+        }
+
+        //if otp is not expired
+        //otp === user.forgot_password_otp
+
+        return response.status(400).json({
+            message : "Verify otp successfully",
+            error : false,
+            success : true
+        })
+
+
+    } catch (error) {
+        return response.status(500).json({
+            message : error.message || error,
+            error : true,
+            success : false
+        })
+        
+    }
+}
+
+//reset the password
+
+export async function resetpassword(request,response){
+    try {
+
+        const {email,newPassword, confirmPassword} =request.body
+
+        if(!email || !newPassword || !confirmPassword){
+            return response.status(400).json({
+                message : "Provide required fileds email,newPassword,confirmPassword"
+            })
+        }
+
+        const user = await userModel.findOne({email})
+
+        if(!user){
+            return response.status(400).json({
+                message : "Email is not available",
+                error : true,
+                success : false
+            })
+        }
+
+        if(newPassword !== confirmPassword){
+            return response.status(400).json({
+                message : "newPassword and confirmPassword not same",
+                error : true,
+                success : false
+            })
+        }
+
+        const salt = await bcryptjs.genSalt(10)
+        const hashPassword = await bcryptjs.hash(newPassword,salt)
+
+        const update = await userModel.findOneAndUpdate(user._id,{
+            password : hashPassword
+        })
+
+        return response.json({
+            message : "Password updated successfully",
+            error : false,
+            success : true
+        })
+        
+    } catch (error) {
+        return response.status(500).json({
+            message : error.message || error,
+            error : true,
+            success : false
+        })
+        
+    }
+}
+
+//refresh token controller
+
+export async function refreshToken(request,response){
+    try {
+
+        const refreshToken = request.cookies.refreshToken || request?.header?.authorization?.split(" ")[1]
+
+        if(!refreshToken){
+            return response.status(401).json({
+                message : "Invalid token",
+                error : true,
+                success : false
+            })
+        }
+
+        
+        const verifyToken = await jwt.verify(refreshToken,process.env.SECRET_KEY_REFRESH_TOKEN)
+
+        if(!verifyToken){
+            return response.status(401).json({
+                message : "Token is expired",
+                error : true,
+                success : false
+            })
+        }
+
+        console.log("verifyToken",verifyToken)
+        const userId = verifyToken?._id
+
+        const newAccessToken = await generatedAccessToken(userId)
+
+        const cookiesOption = {
+            httpOnly : true,
+            secure : true,
+            sameSite : "None"
+           }
+
+        response.cookie('accessToken',newAccessToken,cookiesOption)
+
+        return response.json({
+            message : "New Access token generated",
+            error : false,
+            success : true,
+            data : {
+                accessToken : newAccessToken
+            }
+        })
+
+
+
         
     } catch (error) {
         return response.status(500).json({
